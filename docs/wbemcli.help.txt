@@ -80,6 +80,18 @@ General options:
                         single use of the option. Scripts are executed after the
                         WBEMConnection call
   -v, --verbose         Print more messages while processing
+  -V, --version         Display pywbem version and exit.
+  -e, --enable_stats    Enable gathering of statistics on operations.
+  -l log_spec[,logspec], --log log_spec[,logspec]
+                        Log_spec defines characteristics of the various named
+                        loggers. It is the form:
+                         COMP=[DEST[:DETAIL[:LEVEL]]] where:
+                           COMP: Logger component name:[ops|http|all].
+                                 (Default=all)
+                           DEST: Destination for component:[file|stderr|none].
+                                 (Default=none)
+                           DETAIL: Detail Level to log: [all|min].
+                                   (Default=min)
   -h, --help            Show this help message and exit
 
 Examples:
