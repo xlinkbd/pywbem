@@ -17,8 +17,7 @@ from tabulate import tabulate
 from pyinstrument import Profiler
 import six
 
-
-from pywbem import tupletree, __version__
+from pywbem import tupletree, _cim_xml_parser, __version__
 from pywbem._cliutils import SmartFormatter as _SmartFormatter
 
 if six.PY2:
@@ -204,7 +203,7 @@ def create_xml(count=1000, size=100):
     return xml, AVG_RESPONSE_SIZE
 
 
-def execute_test_code(xml_string, profiler):
+def execute_test_code(xml_string, profiler, testparser):
     """
     The test code to be executed. If a profiler is defined it is enabled
     just before the test code is executed and disabled just after the
@@ -216,10 +215,15 @@ def execute_test_code(xml_string, profiler):
         elif isinstance(profiler, Profiler):
             profiler.start()
 
-    # The code to be tested
-    tt_ = tupletree.xml_to_tupletree_sax(xml_string, "TestData")
-    # call method dependent on pywbem version
-    test_tuple_parse(tt_)
+    if testparser == 'iter':
+        parser = _cim_xml_parser.CIMXMLParser(xml_string)
+        parser.parse_cimxml_operation_response('EnumerateInstances')
+    else:
+        assert testparser == 'tuple'
+        # The code to be tested
+        tt_ = tupletree.xml_to_tupletree_sax(xml_string, "TestData")
+        # call method dependent on pywbem version
+        test_tuple_parse(tt_)
 
     if profiler:
         if isinstance(profiler, cProfile.Profile):
@@ -228,7 +232,7 @@ def execute_test_code(xml_string, profiler):
             profiler.stop()
 
 
-def execute_with_time(xml_string, profiler):
+def execute_with_time(xml_string, profiler, testparser):
     # desc reserved for future tests.
     """
     Start time measurement and execute the test code.
@@ -237,7 +241,7 @@ def execute_with_time(xml_string, profiler):
     """
     start_time = time.time()
 
-    execute_test_code(xml_string, profiler)
+    execute_test_code(xml_string, profiler, testparser)
 
     return time.time() - start_time
 
@@ -252,6 +256,7 @@ class ExecuteTests(object):
     def __init__(self, args):
         self.response_size = args.response_size
         self.response_count = args.response_count
+        self.testparser = args.testparser
         self.profiler = args.profiler
         self.verbose = args.verbose
         self.log = args.log
@@ -303,12 +308,13 @@ class ExecuteTests(object):
 
     def __repr__(self):
         return "ExecuteTests(runid={0}, response_size={1} response_count={2} " \
-               "profiler={3} verbose={4}, log={5}, file_datetime={6}, " \
-               "logfile={7}, dumpfilename={8}, top_n_rows={9}, " \
-               "cprofilesort={10})".format(
+               "testparser={3} profiler={4} verbose={5}, log={6}, " \
+               "file_datetime={7}, logfile={8}, dumpfilename={9}, " \
+               "top_n_rows={10}, cprofilesort={11})".format(
                    self.runid,
                    self.response_size,
                    self.response_count,
+                   self.testparser,
                    self.profiler,
                    self.verbose,
                    self.log,
@@ -328,7 +334,8 @@ class ExecuteTests(object):
         for response_size in self.response_size:
             for response_count in self.response_count:
                 xml, avg_resp_size = create_xml(response_count, response_size)
-                execution_time = execute_with_time(xml, profiler=profiler)
+                execution_time = execute_with_time(
+                    xml, profiler=profiler, testparser=self.testparser)
                 row = (response_size,
                        int(avg_resp_size),
                        response_count,
@@ -410,12 +417,10 @@ class ExecuteTests(object):
                   "XML\nsize",
                   "Parse time\nsec.",
                   "Instances\nper sec"]
-        title = 'Results: profile={0}, response_counts={1},\n   ' \
-                'response-sizes={2}, runid={3} {4}'.format(self.profiler,
-                                                           self.response_count,
-                                                           self.response_size,
-                                                           self.runid,
-                                                           self.file_datetime)
+        title = 'Results: testparser={0}, profile={1}, response_counts={2},\n' \
+            '   response-sizes={3}, runid={4} {5}'.format(
+                self.testparser, self.profiler, self.response_count,
+                self.response_size, self.runid, self.file_datetime)
         table = tabulate(table_rows, header, tablefmt=self.tbl_output_format)
 
         # print statistics to terminal
@@ -445,9 +450,10 @@ def execute_individual_tests(args):
             # define a dump file name for each execution
             tests.response_count = [response_count]
             tests.response_size = [response_size]
-            tests.dumpfilename = "{0}_{1}_{2}_{3}_{4}_{5}.{6}".format(
+            tests.dumpfilename = "{0}_{1}_{2}_{3}_{4}_{5}_{6}.{7}".format(
                 PROFILE_OUT_PREFIX,
                 tests.runid,
+                args.testparser,
                 args.profiler,
                 tests.file_datetime,
                 response_count,
@@ -458,9 +464,10 @@ def execute_individual_tests(args):
             # for each individual  test suffixes the name with the
             # response_size and response_count
             if args.log:
-                tests.logfile = "{0}_{1}_{2}_{3}_{4}_{5}.{6}".format(
+                tests.logfile = "{0}_{1}_{2}_{3}_{4}_{5}_{6}.{7}".format(
                     PROFILE_OUT_PREFIX,
                     tests.runid,
+                    args.testparser,
                     args.profiler,
                     tests.file_datetime,
                     response_count,
@@ -519,6 +526,15 @@ Examples:
     tests_arggroup = argparser.add_argument_group(
         'Test related options',
         'Specify parameters of the test')
+
+    tests_arggroup.add_argument(
+        '-t', '--testparser',
+        dest='testparser', choices=['tuple', 'iter'],
+        action='store', default='tuple',
+        help='R|Defines the parser to be used for the test.\n'
+             '   * `tuple` uses the existing tupleparse parser.\n'
+             '   * `iter` uses the new cim_xml_parse iterative parser.\n'
+             ' Default: %s' % "tuple")
 
     tests_arggroup.add_argument(
         '-p', '--profiler',
@@ -613,10 +629,10 @@ def main():
     """
     args = parse_args()
 
-    print('Starting profiler={0}, response-count={1} response-size={2} '
-          'runid={3} log={4}'.format(args.profiler, args.response_count,
-                                     args.response_size, args.runid,
-                                     args.log))
+    print('Starting testparser={0}, profiler={1}, response-count={2} '
+          'response-size={3} runid={4} log={5}'.
+          format(args.testparser, args.profiler, args.response_count,
+                 args.response_size, args.runid, args.log))
 
     if args.individual:
         execute_individual_tests(args)
