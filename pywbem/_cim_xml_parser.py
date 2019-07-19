@@ -38,11 +38,7 @@ from __future__ import absolute_import
 import re
 import io
 import warnings
-
-# The following choices all work:
-# import xml.etree.ElementTree as ET
-import xml.etree.cElementTree as ET
-# import lxml.etree as ET
+from xml.dom import pulldom
 
 import six
 
@@ -106,8 +102,8 @@ class XmlEvent(object):
                  conn_id=None):
 
         # XML event type:
-        # - 'start':  Start element event
-        # - 'end':  End element event
+        # - pulldom.START_ELEMENT:  Start element event
+        # - pulldom.END_ELEMENT:  End element event
         self.event = event
 
         # Element name.
@@ -246,9 +242,7 @@ class CIMXMLParser(object):
 
         if isinstance(xml_string, six.text_type):
             xml_string = xml_string.encode('utf-8')
-        xml_file = io.BytesIO(xml_string)
-        iterator = ET.iterparse(xml_file, events=('start', 'end'))
-        self.elem_iter = iterator
+        self.doc = pulldom.parseString(xml_string)
 
         # Current XML event:
         self.event = None  # Type of XML event ('start' or 'end')
@@ -275,12 +269,12 @@ class CIMXMLParser(object):
             self.event, self.element = self.put_stack.pop()
         else:
             try:
-                self.event, self.element = next(self.elem_iter)
+                self.event, self.element = next(self.doc)
             except StopIteration:
                 raise CIMXMLParseError(
                     _format("Encountered premature end of XML document "
                             "after {0!A} {1} element",
-                            self.element.tag, self.event),
+                            self.element.tagName, self.event),
                     self.conn_id)
             except ET.ParseError as exc:
                 raise XMLParseError(str(exc), self.conn_id)
@@ -302,15 +296,6 @@ class CIMXMLParser(object):
         self.event = None
         self.element = None
 
-    def clear_element(self):
-        """
-        Clear the current element.
-
-        This deletes its children, attributes, and content, but leaves the
-        element itself in place.
-        """
-        self.element.clear()
-
     # Generic support methods
 
     def required_start_element(self, names):
@@ -329,14 +314,15 @@ class CIMXMLParser(object):
         self.get_next_event()
         if not isinstance(names, (tuple, list)):
             names = (names,)
-        if self.event != 'start' or self.element.tag not in names:
+        if self.event != pulldom.START_ELEMENT or \
+                self.element.tagName not in names:
             names_str = names[0] if len(names) == 1 else str(names)
             raise CIMXMLParseError(
                 _format("Expected {0!A} start element, got {1!A} {2} element",
-                        names_str, self.element.tag, self.event),
+                        names_str, self.element.tagName, self.event),
                 self.conn_id)
-        xml_event = XmlEvent(self.event, self.element.tag,
-                             attributes=self.element.attrib,
+        xml_event = XmlEvent(self.event, self.element.tagName,
+                             attributes=self.element._get_attributes(),
                              conn_id=self.conn_id)
         return xml_event
 
@@ -360,9 +346,9 @@ class CIMXMLParser(object):
         self.get_next_event()
         if not isinstance(names, (tuple, list)):
             names = (names,)
-        if self.event == 'start' and self.element.tag in names:
-            xml_event = XmlEvent(self.event, self.element.tag,
-                                 attributes=self.element.attrib,
+        if self.event == pulldom.START_ELEMENT and self.element.tagName in names:
+            xml_event = XmlEvent(self.event, self.element.tagName,
+                                 attributes=self.element._get_attributes(),
                                  conn_id=self.conn_id)
             return xml_event
         self.put_back_event()
@@ -376,8 +362,8 @@ class CIMXMLParser(object):
             XmlEvent: The next element with attributes (but no content).
         """
         self.get_next_event()
-        xml_event = XmlEvent(self.event, self.element.tag,
-                             attributes=self.element.attrib,
+        xml_event = XmlEvent(self.event, self.element.tagName,
+                             attributes=self.element._get_attributes(),
                              conn_id=self.conn_id)
         self.put_back_event()
         return xml_event
@@ -474,10 +460,10 @@ class CIMXMLParser(object):
               unicode string.
         """
         self.get_next_event()
-        if self.event != 'end' or self.element.tag != name:
+        if self.event != pulldom.END_ELEMENT or self.element.tagName != name:
             raise CIMXMLParseError(
                 _format("Invalid child element {0!A} within {1!A} element",
-                        self.element.tag, name),
+                        self.element.tagName, name),
                 self.conn_id)
 
         # Empty text content (e.g. <VALUE></VALUE>) is surfaced as
@@ -498,8 +484,8 @@ class CIMXMLParser(object):
                         name, tail),
                 self.conn_id)
 
-        xml_event = XmlEvent(self.event, self.element.tag,
-                             attributes=self.element.attrib,
+        xml_event = XmlEvent(self.event, self.element.tagName,
+                             attributes=self.element._get_attributes(),
                              content=content, conn_id=self.conn_id)
         self.clear_element()
         return xml_event
@@ -518,7 +504,7 @@ class CIMXMLParser(object):
         raise CIMXMLParseError(
             _format("Invalid extra {0!A} element after end of expected "
                     "CIM-XML string",
-                    self.element.tag),
+                    self.element.tagName),
             self.conn_id)
 
     # Top level parse methods
@@ -2622,7 +2608,7 @@ class CIMXMLParser(object):
             parser.get_next_event()
             raise CIMXMLParseError(
                 _format("Invalid root element {0!A} in embedded object value",
-                        parser.element.tag),
+                        parser.element.tagName),
                 conn_id=self.conn_id)
 
     def unpack_simple_value(self, data, cimtype):
