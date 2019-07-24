@@ -32,26 +32,26 @@ sudo: required
 # to install Python.
 matrix:
   include:
-    - os: linux
-      language: python
-      python: "2.7"
-      env:
-        - PACKAGE_LEVEL=minimum
-    - os: linux
-      language: python
-      python: "2.7"
-      env:
-        - PACKAGE_LEVEL=latest
+#    - os: linux
+#      language: python
+#      python: "2.7"
+#      env:
+#        - PACKAGE_LEVEL=minimum
+#    - os: linux
+#      language: python
+#      python: "2.7"
+#      env:
+#        - PACKAGE_LEVEL=latest
 #    - os: linux
 #      language: python
 #      python: "3.4"
 #      env:
 #        - PACKAGE_LEVEL=minimum
-    - os: linux
-      language: python
-      python: "3.4"
-      env:
-        - PACKAGE_LEVEL=latest
+#    - os: linux
+#      language: python
+#      python: "3.4"
+#      env:
+#        - PACKAGE_LEVEL=latest
 #    - os: linux
 #      language: python
 #      python: "3.5"
@@ -77,11 +77,11 @@ matrix:
       python: "3.7"
       env:
         - PACKAGE_LEVEL=minimum
-#    - os: linux
-#      language: python
-#      python: "3.7"
-#      env:
-#        - PACKAGE_LEVEL=latest
+    - os: linux
+      language: python
+      python: "3.7"
+      env:
+        - PACKAGE_LEVEL=latest
 # Note: pywbem does not install on pypy, because M2Crypto does not install.
 #    - os: linux
 #      language: python
@@ -105,18 +105,18 @@ matrix:
 #      env:
 #        - PYTHON=2
 #        - PACKAGE_LEVEL=latest
-#    - os: osx
-#      language: generic
-#      python:
-#      env:
-#        - PYTHON=3
-#        - PACKAGE_LEVEL=minimum
-#    - os: osx
-#      language: generic
-#      python:
-#      env:
-#        - PYTHON=3
-#        - PACKAGE_LEVEL=latest
+    - os: osx
+      language: generic
+      python:
+      env:
+        - PYTHON=3
+        - PACKAGE_LEVEL=minimum
+    - os: osx
+      language: generic
+      python:
+      env:
+        - PYTHON=3
+        - PACKAGE_LEVEL=latest
 
 before_install:
   - if [[ "$TRAVIS_BRANCH" == "manual-ci-run" ]]; then
@@ -175,6 +175,10 @@ install:
       $PIP_CMD install --upgrade pip setuptools;
       echo "Checking Python and Pip";
       which $PYTHON_CMD && which $PIP_CMD;
+    fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      echo "Debug Developer packages on MacOS";
+      ls -l /Library/Developer/CommandLineTools/Packages;
     fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       $PIP_CMD install virtualenv;
